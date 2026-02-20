@@ -22,5 +22,7 @@ Although simple, this collection of scripts is released under GPL-3.0
 
 ## Special Thanks
 A special thank is due to the LLM-jp dataset creators and mantainers (and all the projects connected).
+
 You can find their work at [llm-jp-corpus-v4](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v4).
+
 Note: This project is an independent derivative and is not endorsed by llm-jp-corpus-v4 creators.
