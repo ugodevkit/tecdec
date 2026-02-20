@@ -1,0 +1,7 @@
+spacy>=3.0.0
+PySide6
+build
+huggingface_hub
+GitPython
+sudachipy
+sudachidict_core
