@@ -14,8 +14,8 @@ It should do the uv magic...
 
 ## Resources
 The Hugging Face model and dataset are available here:
-ugo86/ja_tecdec_labeler
-ugo86/ja_tecdec_labels
+- ugo86/ja_tecdec_labeler
+- ugo86/ja_tecdec_labels
 
 ## License
 Although simple, this collection of scripts is released under GPL-3.0
