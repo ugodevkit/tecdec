@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org>.
 
+
 """
 LLM-jp Corpus Data Selector
 ===========================
@@ -93,10 +94,9 @@ def fetch_lfs_file(file_path):
     include_pattern = str(rel_path).replace(os.sep, "/")
     
     # Temporarily allow fetching this specific file if global exclude is on
-    # We use -I (include) with git lfs pull, but sometimes local config interferes.
-    # Let's ensure we try to checkout explicitly.
     subprocess.run(["git", "config", "--unset", "lfs.fetchexclude"], cwd=str(REPO_DIR), check=False)
-    subprocess.run(["git", "lfs", "pull", "--include", include_pattern], cwd=str(REPO_DIR), check=True)
+    subprocess.run(["git", "lfs", "fetch", "--include", include_pattern], cwd=str(REPO_DIR), check=True)
+    subprocess.run(["git", "lfs", "checkout", include_pattern], cwd=str(REPO_DIR), check=True)
     # Restore exclude to prevent accidental huge downloads later
     subprocess.run(["git", "config", "lfs.fetchexclude", "*"], cwd=str(REPO_DIR), check=False)
 
@@ -119,7 +119,7 @@ def extract_random_line(file_path):
         print(f"Error reading {file_path}: {e}")
     return None
 
-def get_random_sample(active_mode=True):
+def get_random_sample(n, active_mode=True):
     ensure_repo()
     
     ja_dir = REPO_DIR / "ja"
@@ -130,30 +130,43 @@ def get_random_sample(active_mode=True):
     if not files:
         return f"Error: No .jsonl.gz files found in {ja_dir.absolute()}."
     
-    # 1. Conservative strategy: Check if we have any already-downloaded files
-    downloaded_files = [f for f in files if not is_lfs_pointer(f)]
-    if downloaded_files:
-        print(f"Found {len(downloaded_files)} locally available files. Using one.")
-        random.shuffle(downloaded_files)
-        for f in downloaded_files[:5]:
-            res = extract_random_line(f)
-            if res: return res
-
-    # 2. Active strategy: If allowed, download a new one
-    if active_mode:
-        print("No suitable local data found. Selecting random file to download...")
-        random.shuffle(files)
-        for f in files[:3]: # Try a few candidates
-            # If it's a pointer, or we just want to ensure we have it, fetch it.
-            # Even if we think we have it (conservative failed above), try fetching.
-            try:
-                fetch_lfs_file(f)
+    samples = []
+    for i in range(n):
+        # 1. Conservative strategy: Check if we have any already-downloaded files
+        downloaded_files = [f for f in files if not is_lfs_pointer(f)]
+        if downloaded_files:
+            print(f"Found {len(downloaded_files)} locally available files. Using one.")
+            random.shuffle(downloaded_files)
+            for f in downloaded_files[:5]:
                 res = extract_random_line(f)
-                if res: return res
-            except Exception as e:
-                print(f"Failed to download/read {f}: {e}")
-
-    return "Error: Could not extract valid sample text. Try checking internet connection or disk space."
+                if res:
+                    samples.append({"text": res, "id": i})
+                    break
+        
+        # 2. Active strategy: If allowed, download a new one
+        if active_mode and not samples:
+            print("No suitable local data found. Selecting random file to download...")
+            random.shuffle(files)
+            for f in files[:3]: # Try a few candidates
+                # If it's a pointer, or we just want to ensure we have it, fetch it.
+                # Even if we think we have it (conservative failed above), try fetching.
+                try:
+                    fetch_lfs_file(f)
+                    res = extract_random_line(f)
+                    if res:
+                        samples.append({"text": res, "id": i})
+                        break
+                except Exception as e:
+                    print(f"Failed to download/read {f}: {e}")
+    
+    return samples
 
 if __name__ == "__main__":
-    print(get_random_sample(active_mode=True))
+    import sys
+    if len(sys.argv) > 1:
+        n = int(sys.argv[1])
+    else:
+        n = 1
+    samples = get_random_sample(n, active_mode=True)
+    for sample in samples:
+        print(json.dumps(sample))
