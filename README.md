@@ -17,8 +17,10 @@ The Hugging Face model and dataset are available here:
 - ugo86/ja_tecdec_labeler
 - ugo86/ja_tecdec_labels
 
-## License
+## Licenses
 Although simple, this collection of scripts is released under GPL-3.0
+The TecDec model itself is under LGPL-3.0 (see on HF..)
+The labeled dataset is under ODBL-10 (see on HF...)
 
 ## Special Thanks
 A special thank is due to the LLM-jp dataset creators and mantainers (and all the projects connected).
