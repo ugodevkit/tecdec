@@ -1,5 +1,5 @@
 # TecDec
-The TecDec model is an experiment that applyes the text classification CNN approach to a macro level social analysis (power dynamics). It is designed to be a tool for various multidisciplinary venues, but mainly for CCDA (Computational Critical Discourse Analysis). The project is in **beta**, but I hope to develop it fast. The model performs binary classification to distinguish between technocratic and deliberative frames in text.
+The TecDec model is an experiment that applyes the text classification CNN approach to a macro level social analysis (power dynamics). It is designed to be a tool for various multidisciplinary venues, but mainly for CCDA (Computational Critical Discourse Analysis). The project is in **beta**, but I hope to develop it fast. The model performs binary classification to distinguish between technocratic and deliberative frames in text (Japanese).
 
 In this repository you will find a Python Trial Workbench application, that helps you download the model from Hugging Face (SpaCy best model, or a wheel), the weights, and even the raw JSONL data, and play a bit with them. There is a test-tab and a benchmark-tab. It is still in a development phase, so there can be errors.
 
