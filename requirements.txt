@@ -3,5 +3,11 @@ PySide6
 build
 huggingface_hub
 GitPython
+scikit-learn
+requests
+transformers
+torch
+matplotlib
+google-generativeai
 sudachipy
 sudachidict_core
