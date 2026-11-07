@@ -39,6 +39,7 @@ import sys
 import os
 import spacy
 import selector
+from benchmark import truncate_text, SUDACHI_MAX_BYTES
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QMessageBox, QTextEdit, QFileDialog, QRadioButton, QButtonGroup, QProgressDialog)
 from PySide6.QtCore import Qt, QThread, Signal
@@ -224,7 +225,10 @@ class TesterGUI(QWidget):
              return
         
         try:
-            doc = self.nlp(text)
+            truncated = truncate_text(text)
+            if truncated != text:
+                print(f"Text truncated to {SUDACHI_MAX_BYTES} bytes for the Sudachi tokenizer")
+            doc = self.nlp(truncated)
             
             result = '<b>Text Classification (Categories):</b><br>'
             if doc.cats:
