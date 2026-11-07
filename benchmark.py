@@ -162,6 +162,82 @@ class GroqDialog(QDialog):
         self.selected_id = item.text()
         self.accept()
 
+class OpenAIDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add OpenAI Compatible Model")
+        self.resize(460, 400)
+        self.selected_id = None
+        layout = QVBoxLayout()
+        
+        layout.addWidget(QLabel("Base URL:"))
+        self.txt_base = QLineEdit(os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+        layout.addWidget(self.txt_base)
+        
+        layout.addWidget(QLabel("API Key:"))
+        self.txt_key = QLineEdit(os.environ.get("OPENAI_API_KEY", ""))
+        self.txt_key.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.txt_key)
+        
+        layout.addWidget(QLabel("Model:"))
+        self.txt_model = QLineEdit()
+        self.txt_model.setPlaceholderText("e.g. gpt-4o-mini, mistral-large, qwen2.5-72b-instruct...")
+        layout.addWidget(self.txt_model)
+        
+        btn_fetch = QPushButton("Fetch Models")
+        btn_fetch.clicked.connect(self.refresh)
+        layout.addWidget(btn_fetch)
+        
+        self.list = QListWidget()
+        self.list.itemDoubleClicked.connect(self.accept_selection)
+        layout.addWidget(self.list)
+        
+        btn_add = QPushButton("Add Model")
+        btn_add.clicked.connect(self.accept_manual)
+        layout.addWidget(btn_add)
+        
+        self.setLayout(layout)
+    
+    def credentials(self):
+        base = self.txt_base.text().strip().rstrip("/")
+        key = self.txt_key.text().strip()
+        if base:
+            os.environ["OPENAI_BASE_URL"] = base
+        if key:
+            os.environ["OPENAI_API_KEY"] = key
+        return base, key
+    
+    def refresh(self):
+        self.list.clear()
+        base, key = self.credentials()
+        if not key:
+            QMessageBox.warning(self, "API Key", "Enter an API Key to fetch models.")
+            return
+        try:
+            headers = {"Authorization": f"Bearer {key}"}
+            resp = requests.get(f"{base}/models", headers=headers, timeout=10).json()
+            models = resp.get('data') or resp.get('models') or []
+            for m in models:
+                mid = m.get('id') if isinstance(m, dict) else m
+                if mid:
+                    self.list.addItem(mid)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+    
+    def accept_selection(self, item):
+        base, _ = self.credentials()
+        self.selected_id = {"model": item.text(), "base_url": base}
+        self.accept()
+    
+    def accept_manual(self):
+        model = self.txt_model.text().strip()
+        if not model:
+            QMessageBox.warning(self, "Model", "Enter a model name.")
+            return
+        base, _ = self.credentials()
+        self.selected_id = {"model": model, "base_url": base}
+        self.accept()
+
 # --- Chart Dialog ---
 
 class ChartDialog(QDialog):
@@ -556,6 +632,14 @@ class Evaluator:
     def predict_batch(self, texts):
         return ["UNKNOWN"] * len(texts)
 
+SUDACHI_MAX_BYTES = 49000
+
+def truncate_text(text, max_bytes=SUDACHI_MAX_BYTES):
+    encoded = text.encode('utf-8')
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode('utf-8', errors='ignore')
+
 class SpacyEvaluator(Evaluator):
     def predict_batch(self, texts):
         try:
@@ -571,8 +655,8 @@ class SpacyEvaluator(Evaluator):
             
             nlp = spacy.load(path)
             preds = []
-            # Truncate long texts to avoid Sudachi tokenizer limit
-            texts = [t[:40000] if len(t) > 40000 else t for t in texts]
+            # Truncate long texts to avoid Sudachi tokenizer limit (bytes, not chars)
+            texts = [truncate_text(t) for t in texts]
             docs = list(nlp.pipe(texts))
             for doc in docs:
                 if doc.cats:
@@ -682,6 +766,47 @@ class GroqEvaluator(Evaluator):
                 preds.append("ERROR")
         return preds
 
+class OpenAIEvaluator(Evaluator):
+    def predict_batch(self, texts):
+        preds = []
+        config = self.config if isinstance(self.config, dict) else {"model": self.config}
+        base = (config.get("base_url") or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+             print("OpenAI Error: OPENAI_API_KEY environment variable not set.")
+             return ["ERROR"] * len(texts)
+
+        url = f"{base}/chat/completions"
+        model = config.get("model")
+        labels_str = ", ".join(self.labels)
+        print(f"Querying OpenAI compatible endpoint ({model} @ {base}) with labels: {labels_str}...")
+        
+        for text in texts:
+            prompt = f"Classify this text into exactly one of these categories: [{labels_str}]. Reply ONLY with the category name.\n\nText: {truncate_text(text)}"
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.0
+                }
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                resp = requests.post(url, json=payload, headers=headers, timeout=60)
+                if resp.status_code == 200:
+                    ans = resp.json()['choices'][0]['message']['content'].strip().upper()
+                    found = "UNKNOWN"
+                    for lb in self.labels:
+                        if lb in ans: 
+                            found = lb
+                            break
+                    preds.append(found)
+                else:
+                    print(f"OpenAI API Error: {resp.text}")
+                    preds.append("ERROR")
+            except Exception as e:
+                print(f"OpenAI error: {e}")
+                preds.append("ERROR")
+        return preds
+
 # --- Worker ---
 
 class BenchmarkWorker(QThread):
@@ -776,6 +901,10 @@ class BenchmarkGUI(QWidget):
         btn_add_groq.clicked.connect(self.add_groq)
         ctrl_layout.addWidget(btn_add_groq)
         
+        btn_add_openai = QPushButton("Add OpenAI")
+        btn_add_openai.clicked.connect(self.add_openai)
+        ctrl_layout.addWidget(btn_add_openai)
+        
         btn_remove = QPushButton("Remove Selected")
         btn_remove.clicked.connect(lambda: self.model_list.takeItem(self.model_list.currentRow()))
         ctrl_layout.addWidget(btn_remove)
@@ -848,6 +977,11 @@ class BenchmarkGUI(QWidget):
         if dlg.exec():
             self.add_model(dlg.selected_id + " (Groq)", "groq", dlg.selected_id)
 
+    def add_openai(self):
+        dlg = OpenAIDialog(self)
+        if dlg.exec() and dlg.selected_id:
+            self.add_model(dlg.selected_id["model"] + " (OpenAI)", "openai", dlg.selected_id)
+
     def load_data(self):
         target = "test_data.jsonl"
         if not os.path.exists(target):
@@ -885,6 +1019,7 @@ class BenchmarkGUI(QWidget):
             elif type_str == "hf": evaluators.append(HFEvaluator(name, config))
             elif type_str == "ollama": evaluators.append(OllamaEvaluator(name, config))
             elif type_str == "groq": evaluators.append(GroqEvaluator(name, config))
+            elif type_str == "openai": evaluators.append(OpenAIEvaluator(name, config))
             
             row = self.table.rowCount()
             self.table.insertRow(row)
